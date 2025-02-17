@@ -10,7 +10,6 @@ router.get("/", (req, res) => {
 // Database test route
 router.get("/test-db", async (req, res) => {
   try {
-    // Simple query to test connection
     const [result] = await db.query("SELECT 1");
     res.json({
       message: "Database connection successful",
@@ -361,6 +360,235 @@ router.get("/user-skills/:userId", async (req, res) => {
     res
       .status(500)
       .json({ message: "Error fetching user skills", error: error.message });
+  }
+});
+
+// ============ Role Routes ============
+
+// Create a new role
+router.post("/roles", async (req, res) => {
+  try {
+    const { role_name, description } = req.body;
+    const [result] = await db.query(
+      "INSERT INTO Roles (role_name, description) VALUES (?, ?)",
+      [role_name, description]
+    );
+    res.status(201).json({
+      message: "Role created successfully",
+      roleId: result.insertId,
+    });
+  } catch (error) {
+    console.error("Error creating role:", error);
+    res.status(500).json({ message: "Error creating role", error: error.message });
+  }
+});
+
+// Get all roles
+router.get("/roles", async (req, res) => {
+  try {
+    const [roles] = await db.query("SELECT * FROM Roles");
+    res.json({
+      message: "Roles retrieved successfully",
+      roles: roles,
+    });
+  } catch (error) {
+    console.error("Error fetching roles:", error);
+    res.status(500).json({ message: "Error fetching roles", error: error.message });
+  }
+});
+
+// ============ Permission Routes ============
+
+// Create a new permission
+router.post("/permissions", async (req, res) => {
+  try {
+    const { permission_name, description } = req.body;
+    const [result] = await db.query(
+      "INSERT INTO Permissions (permission_name, description) VALUES (?, ?)",
+      [permission_name, description]
+    );
+    res.status(201).json({
+      message: "Permission created successfully",
+      permissionId: result.insertId,
+    });
+  } catch (error) {
+    console.error("Error creating permission:", error);
+    res.status(500).json({ message: "Error creating permission", error: error.message });
+  }
+});
+
+// Get all permissions
+router.get("/permissions", async (req, res) => {
+  try {
+    const [permissions] = await db.query("SELECT * FROM Permissions");
+    res.json({
+      message: "Permissions retrieved successfully",
+      permissions: permissions,
+    });
+  } catch (error) {
+    console.error("Error fetching permissions:", error);
+    res.status(500).json({ message: "Error fetching permissions", error: error.message });
+  }
+});
+
+// ============ Notification Routes ============
+
+// Create a new notification
+router.post("/notifications", async (req, res) => {
+  try {
+    const { user_id, content, type } = req.body;
+    const [result] = await db.query(
+      "INSERT INTO Notifications (user_id, content, type) VALUES (?, ?, ?)",
+      [user_id, content, type]
+    );
+    res.status(201).json({
+      message: "Notification created successfully",
+      notificationId: result.insertId,
+    });
+  } catch (error) {
+    console.error("Error creating notification:", error);
+    res.status(500).json({ message: "Error creating notification", error: error.message });
+  }
+});
+
+// Get notifications by user ID
+router.get("/notifications/user/:userId", async (req, res) => {
+  try {
+    const userId = req.params.userId;
+    const [notifications] = await db.query(
+      "SELECT * FROM Notifications WHERE user_id = ?",
+      [userId]
+    );
+    res.json({
+      message: "Notifications retrieved successfully",
+      notifications: notifications,
+    });
+  } catch (error) {
+    console.error("Error fetching notifications:", error);
+    res.status(500).json({ message: "Error fetching notifications", error: error.message });
+  }
+});
+
+// ============ User Roles Routes ============
+
+// Assign a role to a user
+router.post("/user-roles", async (req, res) => {
+  try {
+    const { user_id, role_id } = req.body;
+    const [result] = await db.query(
+      "INSERT INTO UserRoles (user_id, role_id) VALUES (?, ?)",
+      [user_id, role_id]
+    );
+    res.status(201).json({
+      message: "Role assigned to user successfully",
+      userRoleId: result.insertId,
+    });
+  } catch (error) {
+    console.error("Error assigning role to user:", error);
+    res.status(500).json({ message: "Error assigning role", error: error.message });
+  }
+});
+
+// Get roles for a user
+router.get("/user-roles/:userId", async (req, res) => {
+  try {
+    const userId = req.params.userId;
+    const [roles] = await db.query(
+      `SELECT ur.*, r.role_name 
+       FROM UserRoles ur
+       JOIN Roles r ON ur.role_id = r.role_id
+       WHERE ur.user_id = ?`,
+      [userId]
+    );
+    res.json({
+      message: "User roles retrieved successfully",
+      roles: roles,
+    });
+  } catch (error) {
+    console.error("Error fetching user roles:", error);
+    res.status(500).json({ message: "Error fetching user roles", error: error.message });
+  }
+});
+
+// ============ Job Recommendations Routes ============
+
+// Add a job recommendation
+router.post("/job-recommendations", async (req, res) => {
+  try {
+    const { job_seeker_id, job_id, relevance_score } = req.body;
+    const [result] = await db.query(
+      "INSERT INTO JobRecommendations (job_seeker_id, job_id, relevance_score) VALUES (?, ?, ?)",
+      [job_seeker_id, job_id, relevance_score]
+    );
+    res.status(201).json({
+      message: "Job recommendation added successfully",
+      recommendationId: result.insertId,
+    });
+  } catch (error) {
+    console.error("Error adding job recommendation:", error);
+    res.status(500).json({ message: "Error adding job recommendation", error: error.message });
+  }
+});
+
+// Get job recommendations for a job seeker
+router.get("/job-recommendations/:jobSeekerId", async (req, res) => {
+  try {
+    const jobSeekerId = req.params.jobSeekerId;
+    const [recommendations] = await db.query(
+      `SELECT jr.*, jp.title as job_title 
+       FROM JobRecommendations jr
+       JOIN JobPostings jp ON jr.job_id = jp.job_id
+       WHERE jr.job_seeker_id = ?`,
+      [jobSeekerId]
+    );
+    res.json({
+      message: "Job recommendations retrieved successfully",
+      recommendations: recommendations,
+    });
+  } catch (error) {
+    console.error("Error fetching job recommendations:", error);
+    res.status(500).json({ message: "Error fetching job recommendations", error: error.message });
+  }
+});
+
+// ============ Saved Jobs Routes ============
+
+// Save a job for a user
+router.post("/saved-jobs", async (req, res) => {
+  try {
+    const { user_id, job_id } = req.body;
+    const [result] = await db.query(
+      "INSERT INTO SavedJobs (user_id, job_id) VALUES (?, ?)",
+      [user_id, job_id]
+    );
+    res.status(201).json({
+      message: "Job saved successfully",
+      savedJobId: result.insertId,
+    });
+  } catch (error) {
+    console.error("Error saving job:", error);
+    res.status(500).json({ message: "Error saving job", error: error.message });
+  }
+});
+
+// Get saved jobs for a user
+router.get("/saved-jobs/:userId", async (req, res) => {
+  try {
+    const userId = req.params.userId;
+    const [savedJobs] = await db.query(
+      `SELECT sj.*, jp.title as job_title 
+       FROM SavedJobs sj
+       JOIN JobPostings jp ON sj.job_id = jp.job_id
+       WHERE sj.user_id = ?`,
+      [userId]
+    );
+    res.json({
+      message: "Saved jobs retrieved successfully",
+      savedJobs: savedJobs,
+    });
+  } catch (error) {
+    console.error("Error fetching saved jobs:", error);
+    res.status(500).json({ message: "Error fetching saved jobs", error: error.message });
   }
 });
 
