@@ -4,7 +4,8 @@ const db = require("../config/db");
 // Create Database
 const createDatabase = `CREATE DATABASE IF NOT EXISTS HireHive;`;
 
-// Users Table
+// Users 
+// 'Table
 const createUsersTable = `
 CREATE TABLE IF NOT EXISTS Users (
     user_id INT AUTO_INCREMENT PRIMARY KEY,

@@ -3,12 +3,14 @@ const express = require("express");
 const db = require("./config/db");
 const routes = require("./routes");
 const { initializeTables } = require("./models/schema");
+const cookieParser = require('cookie-parser');
 
 const app = express();
 
 // Middleware
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+app.use(cookieParser());
 
 // Enable CORS if needed
 app.use((req, res, next) => {

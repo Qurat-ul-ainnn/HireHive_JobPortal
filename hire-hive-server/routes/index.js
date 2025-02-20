@@ -1,6 +1,30 @@
 const express = require("express");
 const router = express.Router();
 const db = require("../config/db");
+const jwt = require('jsonwebtoken');
+const bcrypt = require('bcryptjs');
+const auth = require('../middleware/auth');
+const validate = require('../middleware/validate');
+
+const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key'; // Better to use environment variable
+
+// Authentication Middleware
+const authenticateToken = (req, res, next) => {
+    const authHeader = req.headers['authorization'];
+    const token = authHeader && authHeader.split(' ')[1];
+
+    if (!token) {
+        return res.status(401).json({ message: "No token provided" });
+    }
+
+    jwt.verify(token, JWT_SECRET, (err, user) => {
+        if (err) {
+            return res.status(403).json({ message: "Invalid token" });
+        }
+        req.user = user;
+        next();
+    });
+};
 
 // Basic test route
 router.get("/", (req, res) => {
@@ -589,6 +613,159 @@ router.get("/saved-jobs/:userId", async (req, res) => {
   } catch (error) {
     console.error("Error fetching saved jobs:", error);
     res.status(500).json({ message: "Error fetching saved jobs", error: error.message });
+  }
+});
+
+// Sign Up Endpoint with validation and role-specific data
+router.post("/auth/signup", validate.validateRegistration, async (req, res) => {
+    try {
+        const { name, email, password, role, company_name } = req.body;
+
+        // Check if user exists
+        const [existingUsers] = await db.query(
+            "SELECT * FROM Users WHERE email = ?",
+            [email]
+        );
+
+        if (existingUsers.length > 0) {
+            return res.status(400).json({ message: "Email already registered" });
+        }
+
+        // Hash password
+        const salt = await bcrypt.genSalt(10);
+        const hashedPassword = await bcrypt.hash(password, salt);
+
+        // Start transaction
+        await db.query('START TRANSACTION');
+
+        // Insert user
+        const [userResult] = await db.query(
+            "INSERT INTO Users (name, email, password_hash, role) VALUES (?, ?, ?, ?)",
+            [name, email, hashedPassword, role]
+        );
+
+        // Insert role-specific profile
+        if (role === 'vendor') {
+            await db.query(
+                "INSERT INTO VendorProfile (user_id, company_name) VALUES (?, ?)",
+                [userResult.insertId, company_name]
+            );
+        } else if (role === 'job_seeker') {
+            await db.query(
+                "INSERT INTO JobSeekerProfile (user_id) VALUES (?)",
+                [userResult.insertId]
+            );
+        } else if (role === 'admin') {
+            await db.query(
+                "INSERT INTO AdminProfile (user_id) VALUES (?)",
+                [userResult.insertId]
+            );
+        }
+
+        await db.query('COMMIT');
+
+        res.status(201).json({
+            message: "Registration successful. Please login to continue.",
+            success: true
+        });
+    } catch (error) {
+        await db.query('ROLLBACK');
+        console.error("Signup error:", error);
+        res.status(500).json({ message: "Error during registration" });
+    }
+});
+
+// Sign In Endpoint with role-specific data
+router.post("/auth/signin", validate.validateLogin, async (req, res) => {
+    try {
+        const { email, password } = req.body;
+
+        // Get user with role-specific profile
+        const [users] = await db.query(
+            `SELECT u.*, 
+                CASE 
+                    WHEN u.role = 'vendor' THEN vp.company_name
+                    WHEN u.role = 'job_seeker' THEN js.resume
+                    WHEN u.role = 'admin' THEN ap.admin_level
+                END as role_specific_data
+            FROM Users u
+            LEFT JOIN VendorProfile vp ON u.user_id = vp.user_id
+            LEFT JOIN JobSeekerProfile js ON u.user_id = js.user_id
+            LEFT JOIN AdminProfile ap ON u.user_id = ap.user_id
+            WHERE u.email = ?`,
+            [email]
+        );
+
+        if (users.length === 0) {
+            return res.status(401).json({ message: "Invalid credentials" });
+        }
+
+        const user = users[0];
+
+        const validPassword = await bcrypt.compare(password, user.password_hash);
+        if (!validPassword) {
+            return res.status(401).json({ message: "Invalid credentials" });
+        }
+
+        const token = jwt.sign(
+            { userId: user.user_id, role: user.role },
+            process.env.JWT_SECRET || 'your-secret-key',
+            { expiresIn: '24h' }
+        );
+
+        // Remove sensitive data
+        delete user.password_hash;
+
+        res.json({
+            message: "Login successful",
+            token,
+            user: {
+                id: user.user_id,
+                name: user.name,
+                email: user.email,
+                role: user.role,
+                role_specific_data: user.role_specific_data
+            }
+        });
+    } catch (error) {
+        console.error("Login error:", error);
+        res.status(500).json({ message: "Error during login" });
+    }
+});
+
+// Protected route example
+router.get("/protected/admin", 
+    auth.verifyToken, 
+    auth.isAdmin, 
+    (req, res) => {
+    res.json({ message: "Admin access granted" });
+});
+
+// Protected route for vendors
+router.get("/protected/vendor", 
+    auth.verifyToken, 
+    auth.isVendor, 
+    (req, res) => {
+    res.json({ message: "Vendor access granted" });
+});
+
+// Protected route for job seekers
+router.get("/protected/jobseeker", 
+    auth.verifyToken, 
+    auth.isJobSeeker, 
+    (req, res) => {
+    res.json({ message: "Job seeker access granted" });
+});
+
+// Logout endpoint
+router.post("/auth/logout", async (req, res) => {
+  try {
+    // Clear any server-side session data if you have any
+    res.clearCookie('token');
+    res.json({ message: "Logged out successfully" });
+  } catch (error) {
+    console.error("Logout error:", error);
+    res.status(500).json({ message: "Error during logout" });
   }
 });
 
